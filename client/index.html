@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat Application</title>
+    <style>
+      /* Style for messages */
+      .message {
+        margin: 10px;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        max-width: 70%;
+      }
+
+      .message.sender {
+        background-color: #f0f0f0;
+        align-self: flex-end;
+      }
+
+      .message.receiver {
+        background-color: #d9edf7;
+      }
+
+      /* Style for input form */
+      form {
+        margin-top: 20px;
+      }
+
+      input[type="text"] {
+        width: 80%;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+      }
+
+      button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        background-color: #007bff;
+        color: #fff;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="chat-box"></div>
+    <form id="message-form">
+      <input
+        type="text"
+        id="message-input"
+        placeholder="Type your message..."
+      />
+      <button type="submit">Send</button>
+    </form>
+
+    <script>
+      const chatBox = document.getElementById("chat-box");
+      const messageForm = document.getElementById("message-form");
+      const messageInput = document.getElementById("message-input");
+
+      // Function to check if token exists in cookies
+      function checkToken() {
+        const token = document.cookie
+          .split(";")
+          .find((cookie) => cookie.trim().startsWith("token="));
+        return token ? true : false;
+      }
+
+      // Redirect to login page if token doesn't exist
+      if (!checkToken()) {
+        window.location.href = "./login.html";
+      }
+
+      // Fetch mock messages from an endpoint
+      async function fetchMessages() {
+        try {
+          const response = await fetch("/messages");
+          const data = await response.json();
+
+          return data.prompt; // Assuming the API response contains an array of messages
+        } catch (error) {
+          console.error("Error fetching messages:", error);
+          return []; // Return an empty array if an error occurs
+        }
+      }
+
+      // Function to display messages in the chat box
+      async function displayMessages() {
+        const messages = await fetchMessages();
+        chatBox.innerHTML = ""; // Clear previous messages
+        messages.reverse().forEach((message) => {
+          const messageElement = document.createElement("div");
+          messageElement.textContent = message.body;
+          messageElement.classList.add("message");
+          if (!message.fromChat) {
+            messageElement.classList.add("sender");
+          } else {
+            messageElement.classList.add("receiver");
+          }
+          chatBox.appendChild(messageElement);
+        });
+        // Scroll to bottom of chat box
+        chatBox.scrollTop = chatBox.scrollHeight;
+      }
+
+      // Call displayMessages function initially to display existing messages
+      displayMessages();
+
+      // Event listener for message form submission
+      messageForm.addEventListener("submit", async function (event) {
+        event.preventDefault(); // Prevent default form submission behavior
+
+        const newMessage = {
+          sender: "user", // Assuming the user is sending the message
+          body: messageInput.value,
+        };
+
+        // Add new message to messages array
+        // Here, you can also send the new message to the backend if neede
+
+        // Call displayMessages to update chat box with new message
+        await displayMessages();
+
+        // Clear message input field
+        messageInput.value = "";
+
+        const response = await fetch("/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ type: "text", body: newMessage.body }),
+        });
+        if (response.ok) {
+          await displayMessages();
+        }
+      });
+    </script>
+  </body>
+</html>

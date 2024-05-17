@@ -2,6 +2,7 @@ var express = require("express");
 var cookieParser = require("cookie-parser");
 const cors = require("cors");
 var http = require("http");
+var path = require("path");
 
 const app = express();
 const mongoose = require("mongoose");
@@ -62,33 +63,33 @@ app.use(
     origin: "*",
   })
 );
+app.use(express.static(path.join(__dirname, "client")));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 const options = {
   expires: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
-  httpOnly: true,
+  httpOnly: false,
 };
 
-
 const protected = (req, res, next) => {
-    let token;
-    if (req.cookies.token) {
-      token = req.cookies.token;
-    }
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        status: "Not Authorized",
-        error: "401 Invalid Authorization",
-      });
-    }
-    req.user = {
-      _id: token,
-    };
-    next();
+  let token;
+  if (req.cookies.token) {
+    token = req.cookies.token;
+  }
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      status: "Not Authorized",
+      error: "401 Invalid Authorization",
+    });
+  }
+  req.user = {
+    _id: token,
   };
+  next();
+};
 
 /**
  * @description Post For Users To Login Using `JWT`
@@ -116,11 +117,7 @@ app.post("/login", async (req, res, next) => {
   if (!isMatch) {
     return res.status(400).json("Invalid credentials", 401);
   } else {
-    res.status(201).cookie("token", data._id.toString(), options).json({
-      success: true,
-      status: "success",
-      data,
-    });
+    res.status(201).cookie("token", data._id.toString(), options).redirect("/");
   }
 });
 
@@ -142,11 +139,10 @@ app.post("/register", async (req, res, next) => {
     password,
   });
 
-  res.status(201).cookie("token", newUser._id.toString(), options).json({
-    success: true,
-    status: "success",
-    data: newUser,
-  });
+  res
+    .status(201)
+    .cookie("token", newUser._id.toString(), options)
+    .redirect("/");
 });
 
 app.get("/messages", protected, async (req, res, next) => {
@@ -164,74 +160,73 @@ app.get("/messages", protected, async (req, res, next) => {
 const OpenAI = require("openai");
 
 const configuration = {
-    apiKey: "REPLACE WITH SECRET KEY"
+  apiKey: "REPLACE WITH SECRET KEY",
 };
 
 const openai = new OpenAI(configuration);
 
 const resFromChat = async (messages, user) => {
-    const allMessages = await message.find({ user: user }).sort({ _id: 1 });
-  
-    let data = [];
-    let chat;
-    for (let i = 0; i < allMessages.length; i++) {
-      const e = allMessages[i];
-  
-      if (!e.fromChat) {
-        chat = {
-          role: "user",
-          content: e.body,
-        };
-      }
-      if (e.fromChat) {
-        chat = {
-          role: "assistant",
-          content: e.body,
-        };
-      }
-      data.push(chat);
-    }
-  
-    let upload = [
-      {
-        role: "system",
-        content:
-          "You Are A Banker, Be A very Rude One",
-      },
-    ];
-    upload = upload.concat(data);
-    try {
-      const response =await openai.chat.completions.create({
-        model: "gpt-3.5-turbo-16k-0613",
-        messages: upload,
-        temperature: 1,
-        max_tokens: 256,
-        top_p: 1,
-        frequency_penalty: 0,
-        presence_penalty: 0,
-      });
-  
-      const data = {
-        user,
-        body: response.choices[0].message.content.toString(),
-        type: "text",
-        fromChat: true,
+  const allMessages = await message.find({ user: user }).sort({ _id: 1 });
+
+  let data = [];
+  let chat;
+  for (let i = 0; i < allMessages.length; i++) {
+    const e = allMessages[i];
+
+    if (!e.fromChat) {
+      chat = {
+        role: "user",
+        content: e.body,
       };
-  
-      await message.create(data);
-      return data;
-    } catch (error) {
-      const data = {
-        user,
-        body: "Error From Server Please Try Again",
-        type: "text",
-        fromChat: true,
-      };
-      
-      await message.create(data);
-      return data;
     }
-  };
+    if (e.fromChat) {
+      chat = {
+        role: "assistant",
+        content: e.body,
+      };
+    }
+    data.push(chat);
+  }
+
+  let upload = [
+    {
+      role: "system",
+      content: "You Are A Banker, Be A very Rude One",
+    },
+  ];
+  upload = upload.concat(data);
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo-16k-0613",
+      messages: upload,
+      temperature: 1,
+      max_tokens: 256,
+      top_p: 1,
+      frequency_penalty: 0,
+      presence_penalty: 0,
+    });
+
+    const data = {
+      user,
+      body: response.choices[0].message.content.toString(),
+      type: "text",
+      fromChat: true,
+    };
+
+    await message.create(data);
+    return data;
+  } catch (error) {
+    const data = {
+      user,
+      body: "Error From Server Please Try Again",
+      type: "text",
+      fromChat: true,
+    };
+
+    await message.create(data);
+    return data;
+  }
+};
 
 /**
  * @description Send new Prompt
@@ -240,22 +235,21 @@ const resFromChat = async (messages, user) => {
  * @type POST
  */
 app.post("/messages", protected, async (req, res, next) => {
-    const { body, type } = req.body;
-    const newMgs = await message.create({
-      body,
-      type,
-      user:req.user._id,
-      fromChat:false
-    });
-  
-    const data =  await resFromChat(body,req.user._id);
-    res.status(200).json({
-      success: true,
-      status: " success",
-      prompt: data,
-    });
+  const { body, type } = req.body;
+  const newMgs = await message.create({
+    body,
+    type,
+    user: req.user._id,
+    fromChat: false,
   });
-  
+
+  const data = await resFromChat(body, req.user._id);
+  res.status(200).json({
+    success: true,
+    status: " success",
+    prompt: data,
+  });
+});
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
